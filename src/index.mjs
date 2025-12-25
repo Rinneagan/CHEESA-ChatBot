@@ -102,10 +102,17 @@ async function readJson(req) {
   });
 }
 
+// Check if running in Vercel
+const isVercel = process.env.VERCEL === '1';
+
+// In Vercel, we need to use the Vercel URL for CORS
+const allowedOrigin = process.env.VERCEL_URL 
+  ? `https://${process.env.VERCEL_URL}` 
+  : 'http://localhost:3000';
+
 const server = http.createServer(async (req, res) => {
   // Set CORS headers
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : origin);
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
@@ -118,22 +125,10 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    let pathname = url.pathname === '/' ? '/index.html' : url.pathname;
-    const ext = extname(pathname).toLowerCase();
+    let pathname = url.pathname;
     
-    // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      });
-      res.end();
-      return;
-    }
-
-    // API endpoint for chat
-    if (req.method === 'POST' && pathname === '/api/chat') {
+    // Handle API routes
+    if (pathname === '/api/chat' && req.method === 'POST') {
       try {
         const body = await readJson(req);
         const message = typeof body?.message === 'string' ? body.message : '';
@@ -179,20 +174,28 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Serve static files
-    if (req.method === 'GET') {
+    // In Vercel, static files are handled by @vercel/static
+    // This is just a fallback for local development
+    if (req.method === 'GET' && !isVercel) {
       // Default to index.html if no file extension
-      if (pathname === '/') pathname = '/index.html';
+      if (pathname === '/' || pathname === '') pathname = '/index.html';
       
       // Get the file path
-      let filePath = join(process.cwd(), 'public', pathname);
+      const publicPath = join(process.cwd(), 'public');
+      let filePath = join(publicPath, pathname);
+      
+      // Prevent directory traversal
+      if (!filePath.startsWith(publicPath)) {
+        sendJson(res, 403, { error: 'Forbidden' });
+        return;
+      }
       
       // Check if file exists
       stat(filePath, (err, stats) => {
         if (err) {
           // If file not found, serve index.html for SPA routing
           if (err.code === 'ENOENT') {
-            const indexPath = join(process.cwd(), 'public', 'index.html');
+            const indexPath = join(publicPath, 'index.html');
             return sendFile(res, indexPath, 'text/html');
           }
           

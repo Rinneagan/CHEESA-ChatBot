@@ -4,6 +4,10 @@
     {
       "src": "src/index.mjs",
       "use": "@vercel/node"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -12,8 +16,17 @@
       "dest": "/src/index.mjs"
     },
     {
-      "src": "/(.*)",
+      "src": "^/(.*)",
       "dest": "/public/$1"
+    },
+    {
+      "src": "^/$",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "^/(?!api/|_next/|_static/|_vercel|[\\w-]+\\.[\\w]+$)",
+      "status": 200,
+      "dest": "/public/index.html"
     }
   ]
 }
